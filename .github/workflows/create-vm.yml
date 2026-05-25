@@ -2,12 +2,12 @@ name: Try to Create OCI VM
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 concurrency:
   group: oci-a1-flex-create
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   OCI_COMPARTMENT_ID: ${{ secrets.OCI_COMPARTMENT_ID }}
@@ -72,41 +72,58 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          set +e
-          OCI_OUTPUT=$(
-            oci compute instance launch \
-              --compartment-id "$OCI_COMPARTMENT_ID" \
-              --availability-domain "$AD_NAME" \
-              --shape "VM.Standard.A1.Flex" \
-              --shape-config '{"ocpus":4,"memoryInGBs":24}' \
-              --subnet-id "$OCI_SUBNET_ID" \
-              --image-id "$IMAGE_ID" \
-              --ssh-authorized-keys-file /tmp/oci_ssh_key.pub \
-              --assign-public-ip true \
-              --display-name "coolify-vm" \
-              --boot-volume-size-in-gbs 200 2>&1
-          )
-          status=$?
-          set -e
+          all_output=""
+          success=1
+
+          for attempt in 1 2 3 4 5; do
+            echo "Starting OCI launch attempt $attempt of 5"
+            set +e
+            OCI_OUTPUT=$(
+              oci compute instance launch \
+                --compartment-id "$OCI_COMPARTMENT_ID" \
+                --availability-domain "$AD_NAME" \
+                --shape "VM.Standard.A1.Flex" \
+                --shape-config '{"ocpus":4,"memoryInGBs":24}' \
+                --subnet-id "$OCI_SUBNET_ID" \
+                --image-id "$IMAGE_ID" \
+                --ssh-authorized-keys-file /tmp/oci_ssh_key.pub \
+                --assign-public-ip true \
+                --display-name "coolify-vm" \
+                --boot-volume-size-in-gbs 200 2>&1
+            )
+            status=$?
+            set -e
+
+            all_output="${all_output}
+
+===== Attempt ${attempt} | exit ${status} =====
+${OCI_OUTPUT}"
+            echo "$OCI_OUTPUT"
+
+            if echo "$OCI_OUTPUT" | grep -q '"lifecycle-state": "PROVISIONING"'; then
+              success=0
+              break
+            fi
+
+            if [ "$attempt" -lt 5 ]; then
+              sleep 60
+            fi
+          done
+
           {
             echo "log_data<<EOF"
-            echo "$OCI_OUTPUT"
+            echo "$all_output"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
           {
-            echo "## OCI VM launch attempt"
-            echo
-            echo "Exit code: $status"
+            echo "## OCI VM launch attempts"
             echo
             echo '```'
-            echo "$OCI_OUTPUT"
+            echo "$all_output"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "$OCI_OUTPUT"
-          if echo "$OCI_OUTPUT" | grep -q '"lifecycle-state": "PROVISIONING"'; then
-            exit 0
-          fi
-          exit 1
+
+          exit "$success"
 
       - name: Send Discord notification
         if: ${{ always() && env.DISCORD_WEBHOOK_URL != '' }}
