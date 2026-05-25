@@ -94,10 +94,7 @@ jobs:
             status=$?
             set -e
 
-            all_output="${all_output}
-
-===== Attempt ${attempt} | exit ${status} =====
-${OCI_OUTPUT}"
+            all_output="${all_output}"$'\n\n'"===== Attempt ${attempt} | exit ${status} ====="$'\n'"${OCI_OUTPUT}"
             echo "$OCI_OUTPUT"
 
             if echo "$OCI_OUTPUT" | grep -q '"lifecycle-state": "PROVISIONING"'; then
