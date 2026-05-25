@@ -64,6 +64,7 @@ jobs:
           chmod 600 ~/.oci/config
           printf "%s\n" "$SSH_PUBLIC_KEY" > /tmp/oci_ssh_key.pub
           oci --version
+          echo "Derived API key fingerprint: $(openssl rsa -pubout -outform DER -in ~/.oci/oci_api_key.pem 2>/dev/null | openssl md5 -c | sed 's/^MD5(stdin)= //')"
 
       - name: Try to create A1.Flex VM
         id: create_vm
