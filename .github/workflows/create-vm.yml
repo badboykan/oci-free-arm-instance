@@ -76,10 +76,11 @@ jobs:
           success=1
 
           for attempt in 1 2 3 4 5; do
+            attempt_started_at=$(date +%s)
             echo "Starting OCI launch attempt $attempt of 5"
             set +e
             OCI_OUTPUT=$(
-              oci compute instance launch \
+              timeout 50s oci compute instance launch \
                 --compartment-id "$OCI_COMPARTMENT_ID" \
                 --availability-domain "$AD_NAME" \
                 --shape "VM.Standard.A1.Flex" \
@@ -94,6 +95,10 @@ jobs:
             status=$?
             set -e
 
+            if [ "$status" -eq 124 ]; then
+              OCI_OUTPUT="${OCI_OUTPUT}"$'\n'"OCI CLI command timed out after 50 seconds."
+            fi
+
             all_output="${all_output}"$'\n\n'"===== Attempt ${attempt} | exit ${status} ====="$'\n'"${OCI_OUTPUT}"
             echo "$OCI_OUTPUT"
 
@@ -103,7 +108,11 @@ jobs:
             fi
 
             if [ "$attempt" -lt 5 ]; then
-              sleep 60
+              elapsed=$(($(date +%s) - attempt_started_at))
+              remaining=$((60 - elapsed))
+              if [ "$remaining" -gt 0 ]; then
+                sleep "$remaining"
+              fi
             fi
           done
 
